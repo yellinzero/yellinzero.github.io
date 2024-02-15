@@ -1,0 +1,34 @@
+<div class="container">
+    <div class="meta">
+        <h2 class="title"><%= __('projects') %></h2>
+    </div>
+    <div class="divider"></div>
+    <% if (page.projects && Object.keys(page.projects).length > 0) { %>
+        <div class="card-grid">
+            <% for (const i in page.projects) { %>
+                <div class="card">
+                    <% if (page.projects[i].img_path) { %>
+                        <div class="cover-img">
+                            <img src="<%= page.projects[i].img_path %>" alt="<%= page.projects[i].img_alt || i %>">
+                        </div>
+                    <% } %>
+    
+                    <div class="content">
+                        <p class="title"><%= page.projects[i].title || i %></p>
+                        <% if (page.projects[i].description) { %>     
+                            <p class="description"><%= page.projects[i].description %></p>
+                        <% } %>
+                    </div>
+                    <div class="actions">
+                        <div class="right">
+                            <a class="action-button-primary" href="<%= page.projects[i].path %>">Learn more</a>
+                        </div>
+                    </div>
+                </div>
+            <% } %>
+        </div>
+    <% } else { %>
+        <h3><%= __('wating_to_create') %></h3>
+    <% } %>
+   
+</div>
