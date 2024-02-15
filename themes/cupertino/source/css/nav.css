@@ -33,6 +33,9 @@ nav .title {
     font-weight: 700;
     line-height: 48px;
     color: var(--black-2)!important;
+    display: inline-flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 nav .nav-arrow {
@@ -88,6 +91,10 @@ nav .nav-item-search {
     background-size: 16px 16px;
 }
 
+body[data-color-scheme="auto"] nav .nav-logo, body[data-color-scheme="light"] nav .nav-logo {
+    background-image: url(/theme-img/logo-dark.svg);
+}
+
 body[data-color-scheme="auto"] nav .nav-item-github, body[data-color-scheme="light"] nav .nav-item-github {
     background-image: url(/theme-img/github-mark-dark.png);
 }
@@ -113,6 +120,9 @@ body[data-color-scheme="auto"] nav .nav-item-search, body[data-color-scheme="lig
 }
 
 @media (prefers-color-scheme: dark) {
+    body[data-color-scheme="auto"] nav .nav-logo {
+        background-image: url(/theme-img/logo-light.svg);
+    }
     body[data-color-scheme="auto"] nav .nav-item-github {
         background-image: url(/theme-img/github-mark-light.png);
     }
@@ -131,6 +141,10 @@ body[data-color-scheme="auto"] nav .nav-item-search, body[data-color-scheme="lig
     body[data-color-scheme="auto"] nav .nav-item-search {
         background-image: url(/theme-img/search-light.svg);
     }
+}
+
+body[data-color-scheme="dark"] nav .nav-logo {
+    background-image: url(/theme-img/logo-light.svg);
 }
 
 body[data-color-scheme="dark"] nav .nav-item-github {
