@@ -106,6 +106,15 @@ ignore:
 ## Themes: https://hexo.io/themes/
 theme: cupertino
 
+plugins:
+    hexo-generator-feed
+
+# RSS
+feed:
+  type: atom
+  path: atom.xml
+  limit: 20
+
 # Deployment
 ## Docs: https://hexo.io/docs/one-command-deployment
 deploy:
@@ -118,3 +127,5 @@ search:
 
 # Tidio
 tidio: //code.tidio.co/xmhjtbzuiklhpvwp5kuriq7rb5kkvdsb.js
+
+
