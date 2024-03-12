@@ -1,5 +1,5 @@
 ---
-title: scratch_gui_source_code_analysis
+title: Scratch Gui Source Code Analysis(WIP)
 date: 2024-03-11 08:35:15
 tags: 
     - scratch gui
@@ -64,6 +64,6 @@ Although JavaScript lacks the type checking capabilities of TypeScript, runtime 
 
 ## State management
 
-The project uses redux for state management, I commonly used framework is vue, state management is currently used pinia, there are still some obvious differences between them, redux is relatively not as intuitive and convenient as pinia, but provides a high degree of flexibility, controllability.
+In this project, state management is handled using [Redux](https://redux.js.org/). Redux is known for its robustness and high degree of control over application state, making it a powerful choice for complex applications.
 
 
