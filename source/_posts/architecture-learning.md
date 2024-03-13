@@ -162,7 +162,7 @@ lang: zh-CN
 - **事务性和数据一致性**：分布式系统中，保持数据一致性和管理跨服务事务的复杂性。
 - **重复和丢失消息处理**：设计机制处理消息的重复投递和潜在的消息丢失问题。
 
-通过精心设计和选择适合的消息队列产品（如[RabbitMQ](https://www.rabbitmq.com/)、[Apache Kafka](https://kafka.apache.org/)、[Amazon SQS](https://aws.amazon.com/cn/sqs/[Amazon SQS 消息队列服务_消息队列mq解决方案-AWS云服务](https://aws.amazon.com/cn/sqs/))等），可以有效地克服这些挑战，充分发挥消息队列在现代分布式系统中的价值。
+通过精心设计和选择适合的消息队列产品（如[RabbitMQ](https://www.rabbitmq.com/)、[Apache Kafka](https://kafka.apache.org/)、[Amazon SQS](https://aws.amazon.com/cn/sqs/)等），可以有效地克服这些挑战，充分发挥消息队列在现代分布式系统中的价值。
 
 ### 数据异构
 
@@ -195,7 +195,7 @@ lang: zh-CN
 - **核心**：移动或桌面应用内缓存数据，以减少网络请求并提速，另外还可以提供离线的客户端操作作为兜底方案，比如缓存首屏资源。
 - **实践**：在大型促销活动前，将静态资源预加载到客户端，减轻活动启动时服务器的负担。这通常涉及资源版本控制和预加载等技术。
 
-#### CDN缓存
+#### [CDN](https://zh.wikipedia.org/zh-cn/%E5%85%A7%E5%AE%B9%E5%82%B3%E9%81%9E%E7%B6%B2%E8%B7%AF)缓存
 
 - **核心**：内容分发网络（CDN）在全球多地缓存内容，提高全球访问速度。
 - **实践**：将静态资源部署至CDN，实现资源请求由用户最近的服务器响应，显著减少加载时间。
@@ -204,8 +204,8 @@ lang: zh-CN
 
 - **核心**：在架构的前端部署缓存，存储频繁访问内容。
 - **实践**：
-  - **配置Nginx作为反向代理缓存**：设置Nginx来缓存动态内容的输出。例如，可以对经常访问的首页、产品列表页等进行缓存。通过Nginx的`proxy_cache`指令，你可以定义缓存的键、有效期和存储路径。
-  - **使用Varnish进行高级缓存**：Varnish是另一个强大的HTTP缓存系统，能够处理更复杂的缓存逻辑。通过VCL（Varnish Configuration Language），你可以编写规则来决定哪些请求和响应应该被缓存以及如何缓存。
+  - **配置[Nginx](https://nginx.org/en/)作为反向代理缓存**：设置Nginx来缓存动态内容的输出。例如，可以对经常访问的首页、产品列表页等进行缓存。通过Nginx的`proxy_cache`指令，你可以定义缓存的键、有效期和存储路径。
+  - **使用[Varnish](https://github.com/varnishcache/varnish-cache)进行高级缓存**：Varnish是另一个强大的HTTP缓存系统，能够处理更复杂的缓存逻辑。通过VCL（Varnish Configuration Language），你可以编写规则来决定哪些请求和响应应该被缓存以及如何缓存。
 
 #### 应用层缓存
 
@@ -213,7 +213,7 @@ lang: zh-CN
 
 - **实践**：
   
-  - **内存缓存**：使用Redis或Memcached缓存数据库查询结果或其他计算数据。
+  - **内存缓存**：使用[Redis](https://redis.io/)或[Memcached](https://memcached.org/)缓存数据库查询结果或其他计算数据。
   - **应用内缓存机制**：在代码级别实现缓存，如利用HashMap缓存计算密集型数据结果。
 
 #### 分布式缓存
