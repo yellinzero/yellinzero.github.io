@@ -403,3 +403,114 @@ location / {
 ```
 
 #### 负载均衡算法
+
+负载均衡算法是网络架构中关键组件，确保请求均匀分布于服务器，提升系统稳定性和处理能力。以下是几种常用的负载均衡算法：
+
+##### 轮询(Round Robin)
+
+默认的负载均衡算法（事实上是加权轮询），以轮询的方式将请求转发到上游服务器，通过配合权重配置实现基于权重的轮询。
+
+##### 基于IP的哈希(IP Hash)
+
+根据客户端的 IP 地址计算哈希值，然后根据哈希值将请求分配到服务器。这种方法确保来自同一客户端的请求总是被发送到同一服务器（前提是服务器列表保持不变）。
+
+```nginx
+upstream backend {
+    ip_hash;
+    server 192.168.61.1:9080 weight=1;
+    server 192.168.61.1:8080 weight=2;
+}
+```
+
+##### 最少连接数(Least Connections)
+
+将新请求分配给当前连接数最少的服务器，优化资源利用率，适用于会话长度不一的场景。。如果有多个服务器的连接数相同，则按照轮询策略选择服务器。
+
+##### 哈希算法 (Hash Algorithm)
+
+通过哈希函数，基于特定键值（如URL、请求参数）计算哈希值，根据结果选择服务器。包括基本哈希和一致性哈希算法。
+
+- **哈希算法：** 在负载均衡的上下文中，哈希算法通常用于确定将传入的请求分配给哪个后端服务器。基本的哈希算法包括根据某种键值（如客户端IP地址、请求的URL等）进行哈希计算，然后根据哈希值选择后端服务器。哈希算法的目标是尽量均匀分配负载，同时保持特定请求的会话亲和性（Session Affinity）。
+  
+  - 常见操作步骤：
+    
+    1. 选择一个键值（如客户端IP、请求的URL）作为输入。
+    
+    2. 使用哈希函数对该键值进行哈希计算，产生一个哈希值。
+    
+    3. 将哈希值映射到后端服务器。常见的方法是哈希值对服务器数量取模（例如，哈希值 % 服务器数量）。
+  
+  . 缺陷：如果后端服务器的数量变化（添加或删除服务器），大部分请求都可能被映射到新的服务器，这会导致缓存失效和会话不连贯等问题。
+  
+  ```nginx
+  upstream backend {
+      hash $url;
+      server 192.168.61.1:9080 weight=1;
+      server 192.168.61.1:8080 weight=2;
+  }
+  ```
+
+. **一致性哈希算法：** 一致性哈希算法是为了解决传统哈希算法在服务器列表变动时导致的大量重新映射问题而设计的。一致性哈希将哈希值空间组织成一个虚拟的圆环（或哈希环），并将服务器映射到这个环上的某个点上。
+  
+  . 常见操作步骤：
+    
+    1. 将哈希空间组织成一个虚拟的圆环。
+    
+    2. 根据服务器的标识（如IP地址）计算哈希值，并将每个服务器放置在哈希环上的相应位置。
+    
+    3. 对于每个请求，根据请求的键值计算哈希值，然后在哈希环上顺时针寻找到第一个遇到的服务器作为目标服务器。
+  
+  . 优点：
+    
+    - **服务器增减时的高效性**：当增加或删除服务器时，只有一个很小部分的请求会被重新映射到其他服务器，大大减少了缓存失效和会话不连贯的问题。
+    - **负载均衡**：一致性哈希尽量保证请求均匀分布到各个服务器。
+  
+  ```nginx
+  upstream backend {
+      hash $consistent_key consistent;
+      server 192.168.61.1:9080 weight=1;
+      server 192.168.61.1:8080 weight=2;
+  }
+  
+  
+  location / {
+      set $consistent_key $xxx
+      if ($consistent_key = "") {
+          set $consistent_key $request_uri;
+      }
+  }
+  ```
+
+实际操作中，我们可以使用OpenResty+Lua+nginx来灵活的配置一致性哈希的key，书中代码如下
+
+```nginx
+location / {
+    set_by_lua_file $consistent_key "lua_balancing.lua";
+}
+```
+
+```lua
+-- lua_balancing.lua
+-- 从参数中获取xxx参数
+local args = ngx.req.get_uri_args()
+local consistent_key = args.xxx
+
+if not consistent_key or consistent_key == '' then
+    consistent_key = ngx.var.request_uri
+end
+
+-- 尝试从缓存中获取预定义的实例
+local value = balancing_cache:get(consistent_key)
+if not value then
+    -- 如果不存在，则设置一个key为1，并且时间为60s
+    success, err = balancing_cache:set(consistent_key, 1, 60)
+else
+    -- 存在则递增key值
+    newval, err = balancing_cache:incr(consistent_key, 1)
+end
+
+-- 当递增的key大于某个阈值的时候则递增到一个新的服务器去
+if newval > 5000 then
+    consistent_key = consistent_key .. '_' .. newval
+end
+```
