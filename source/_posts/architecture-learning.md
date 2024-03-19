@@ -424,7 +424,7 @@ upstream backend {
 
 ##### 最少连接数(Least Connections)
 
-将新请求分配给当前连接数最少的服务器，优化资源利用率，适用于会话长度不一的场景。。如果有多个服务器的连接数相同，则按照轮询策略选择服务器。
+将新请求分配给当前连接数最少的服务器，优化资源利用率，适用于会话长度不一的场景。如果有多个服务器的连接数相同，则按照轮询策略选择服务器。
 
 ##### 哈希算法 (Hash Algorithm)
 
@@ -451,35 +451,35 @@ upstream backend {
   ```
 
 . **一致性哈希算法：** 一致性哈希算法是为了解决传统哈希算法在服务器列表变动时导致的大量重新映射问题而设计的。一致性哈希将哈希值空间组织成一个虚拟的圆环（或哈希环），并将服务器映射到这个环上的某个点上。
-  
+
   . 常见操作步骤：
-    
+
     1. 将哈希空间组织成一个虚拟的圆环。
     
     2. 根据服务器的标识（如IP地址）计算哈希值，并将每个服务器放置在哈希环上的相应位置。
     
     3. 对于每个请求，根据请求的键值计算哈希值，然后在哈希环上顺时针寻找到第一个遇到的服务器作为目标服务器。
-  
+
   . 优点：
-    
+
     - **服务器增减时的高效性**：当增加或删除服务器时，只有一个很小部分的请求会被重新映射到其他服务器，大大减少了缓存失效和会话不连贯的问题。
     - **负载均衡**：一致性哈希尽量保证请求均匀分布到各个服务器。
-  
-  ```nginx
-  upstream backend {
-      hash $consistent_key consistent;
-      server 192.168.61.1:9080 weight=1;
-      server 192.168.61.1:8080 weight=2;
-  }
-  
-  
-  location / {
-      set $consistent_key $xxx
-      if ($consistent_key = "") {
-          set $consistent_key $request_uri;
-      }
-  }
-  ```
+
+```nginx
+upstream backend {
+    hash $consistent_key consistent;
+    server 192.168.61.1:9080 weight=1;
+    server 192.168.61.1:8080 weight=2;
+}
+
+
+location / {
+    set $consistent_key $xxx
+    if ($consistent_key = "") {
+        set $consistent_key $request_uri;
+    }
+}
+```
 
 实际操作中，我们可以使用OpenResty+Lua+nginx来灵活的配置一致性哈希的key，书中代码如下
 
@@ -509,8 +509,264 @@ else
     newval, err = balancing_cache:incr(consistent_key, 1)
 end
 
--- 当递增的key大于某个阈值的时候则递增到一个新的服务器去
+-- 当递增的key大于某个阈值的时候则递增到一个新的服务器
 if newval > 5000 then
     consistent_key = consistent_key .. '_' .. newval
 end
 ```
+
+#### 长连接
+
+我们在网络请求中使用长连接的目的是为了达到下面的目的：
+
+- **减少连接建立和关闭的开销**：每次建立新的 TCP 连接都涉及到三次握手过程，这会增加延迟和处理开销。通过重用已经建立的连接，可以减少这些额外的开销。
+
+- **提高请求的处理速度**：因为省去了重复建立连接的时间，所以长连接可以提高请求的处理速度，尤其是在高流量的情况下。
+
+- **减少并发连接数**：长连接可以减少服务器需要同时处理的并发连接总数，这对于保持服务器的性能和稳定性非常重要。
+
+但它也有其优劣势，所以在使用的时候需要好好的考虑和规划
+
+##### 优势
+
+- **性能提升**：避免频繁的连接建立和关闭，降低了 TCP 握手的延迟，对性能是一个直接的提升。
+
+- **减轻服务器负载**：长连接减少了服务器必须处理的网络连接的数量，从而减轻了服务器的负载。
+
+- **提高吞吐量**：由于减少了连接建立的时间，长连接可以在同一时间内处理更多的请求，从而提高吞吐量。
+
+##### 劣势
+
+- **资源占用**：即使在没有数据传输的时候，长连接也会保持打开状态，这会占用服务器的资源，如文件描述符、内存等。
+
+- **不活跃连接**：如果客户端忘记关闭连接，或者由于网络问题导致连接没有正常关闭，可能会导致服务器上积累很多不活跃的连接，这些都是无谓的资源占用。
+
+- **潜在的资源耗尽问题**：在高负载环境下，长连接可能会导致服务器资源耗尽，尤其是在短时间内有大量连接建立时。
+
+##### nginx配置示例
+
+```nginx
+upstream backend {
+    server ipaddr_1 weight=1;
+    server ipaddr_2 weight=2 backup;
+    keepalive 100;
+}
+
+location / {
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    # proxy_set_header Connection "Keep-Alive" if http_version == 1.0
+    proxy_pass http://backend;
+}
+```
+
+- 注意上游服务器也需要开启长连接支持
+
+##### nginx[长连接的获取和释放实现代码](https://trac.nginx.org/nginx/browser/nginx/src/http/modules/ngx_http_upstream_keepalive_module.c)解析
+
+- **ngx_http_upstream_get_keepalive_peer**
+
+```c
+// 从长连接池中获取一个已经建立的连接
+static ngx_int_t
+ngx_http_upstream_get_keepalive_peer(ngx_peer_connection_t *pc, void *data)
+{
+    ngx_http_upstream_keepalive_peer_data_t  *kp = data;
+    ngx_http_upstream_keepalive_cache_t      *item;
+
+    ngx_int_t          rc;
+    ngx_queue_t       *q, *cache;
+    ngx_connection_t  *c;
+
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, pc->log, 0,
+                   "get keepalive peer");
+
+    /* ask balancer */
+    // 尝试获取一个新的上游连接
+    rc = kp->original_get_peer(pc, kp->data);
+
+    if (rc != NGX_OK) {
+        return rc;
+    }
+
+    /* search cache for suitable connection */
+    // 获取长连接缓存的引用
+    cache = &kp->conf->cache;
+    // 开始遍历缓存队列并寻找一个可用的连接
+    for (q = ngx_queue_head(cache);
+         q != ngx_queue_sentinel(cache);
+         q = ngx_queue_next(q))
+    {
+        item = ngx_queue_data(q, ngx_http_upstream_keepalive_cache_t, queue);
+        c = item->connection;
+        // 检查缓存项的地址是否和当前请求的地址匹配
+        if (ngx_memn2cmp((u_char *) &item->sockaddr, (u_char *) pc->sockaddr,
+                         item->socklen, pc->socklen)
+            == 0)
+        {
+            ngx_queue_remove(q);
+            ngx_queue_insert_head(&kp->conf->free, q);
+            // 找到就进入到found处理
+            goto found;
+        }
+    }
+
+    return NGX_OK;
+
+found:
+
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 0,
+                   "get keepalive peer: using connection %p", c);
+    // 设置为非空闲
+    c->idle = 0;
+    c->sent = 0;
+    c->data = NULL;
+    c->log = pc->log;
+    c->read->log = pc->log;
+    c->write->log = pc->log;
+    c->pool->log = pc->log;
+
+    if (c->read->timer_set) {
+        ngx_del_timer(c->read);
+    }
+    // 赋值
+    pc->connection = c;
+    pc->cached = 1;
+    // 表示获取到了一个长连接
+    return NGX_DONE;
+}
+```
+
+- **ngx_http_upstream_free_keepalive_peer**
+
+```c
+// 将不再使用的长连接放回到连接池中
+static void
+ngx_http_upstream_free_keepalive_peer(ngx_peer_connection_t *pc, void *data,
+    ngx_uint_t state)
+{
+    ngx_http_upstream_keepalive_peer_data_t  *kp = data;
+    ngx_http_upstream_keepalive_cache_t      *item;
+
+    ngx_queue_t          *q;
+    ngx_connection_t     *c;
+    ngx_http_upstream_t  *u;
+
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, pc->log, 0,
+                   "free keepalive peer");
+
+    /* cache valid connections */
+
+    u = kp->upstream;
+    c = pc->connection;
+    // 检查连接状态，有错误或超时则进入到invalid进行清理
+    if (state & NGX_PEER_FAILED
+        || c == NULL
+        || c->read->eof
+        || c->read->error
+        || c->read->timedout
+        || c->write->error
+        || c->write->timedout)
+    {
+        goto invalid;
+    }
+
+    if (c->requests >= kp->conf->requests) {
+        goto invalid;
+    }
+
+    if (ngx_current_msec - c->start_time > kp->conf->time) {
+        goto invalid;
+    }
+
+    if (!u->keepalive) {
+        goto invalid;
+    }
+
+    if (!u->request_body_sent) {
+        goto invalid;
+    }
+
+    if (ngx_terminate || ngx_exiting) {
+        goto invalid;
+    }
+
+    if (ngx_handle_read_event(c->read, 0) != NGX_OK) {
+        goto invalid;
+    }
+
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 0,
+                   "free keepalive peer: saving connection %p", c);
+
+    /* 
+     * 在释放长连接时，检查空闲队列是否为空的步骤是为了管理和重用长连接池中的连接。
+     * 长连接池中维护着两个队列：一个用于存放当前空闲的连接（称为“空闲队列”），
+     * 另一个用于存放所有连接（称为“缓存队列”）。
+     * 当有连接不再被使用时，我们会尝试将它放回到空闲队列中，以便它可以被后续的请求重用。
+     * 如果空闲队列不为空，说明还有现成的连接可以被重新利用，
+     * 我们就可以直接将刚释放的连接放入空闲队列中。
+     * 然而，如果空闲队列为空，那意味着当前没有多余的连接可以直接用于新的请求，
+     * 这时，我们可能需要从缓存队列中移除一些连接以维持池中连接数量的平衡。
+     */
+
+    // 检查长连接的空闲队伍是否为空
+    if (ngx_queue_empty(&kp->conf->free)) {
+        // 为空表示当前没有可供重用的连接  
+        // 因此需要从缓存队列中关闭清空一项（下面的close操作），把连接让出来
+        // 因为淘汰最不常用的，按照先进先出，取出的是队列末尾的连接（最早放入的）
+        q = ngx_queue_last(&kp->conf->cache);
+        ngx_queue_remove(q);
+
+        item = ngx_queue_data(q, ngx_http_upstream_keepalive_cache_t, queue);
+
+        ngx_http_upstream_keepalive_close(item->connection);
+
+    } else {
+        // 不为空则表示还有多余可以使用的节点，则直接移除一个节点放入
+        q = ngx_queue_head(&kp->conf->free);
+        ngx_queue_remove(q);
+
+        item = ngx_queue_data(q, ngx_http_upstream_keepalive_cache_t, queue);
+    }
+
+    ngx_queue_insert_head(&kp->conf->cache, q);
+
+    item->connection = c;
+
+    pc->connection = NULL;
+
+    c->read->delayed = 0;
+    ngx_add_timer(c->read, kp->conf->timeout);
+
+    if (c->write->timer_set) {
+        ngx_del_timer(c->write);
+    }
+
+    c->write->handler = ngx_http_upstream_keepalive_dummy_handler;
+    c->read->handler = ngx_http_upstream_keepalive_close_handler;
+
+    c->data = item;
+    c->idle = 1;
+    c->log = ngx_cycle->log;
+    c->read->log = ngx_cycle->log;
+    c->write->log = ngx_cycle->log;
+    c->pool->log = ngx_cycle->log;
+
+    item->socklen = pc->socklen;
+    ngx_memcpy(&item->sockaddr, pc->sockaddr, pc->socklen);
+
+    if (c->read->ready) {
+        ngx_http_upstream_keepalive_close_handler(c->read);
+    }
+
+invalid:
+
+    kp->original_free_peer(pc, kp->data, state);
+}
+```
+
+- 注意，上面的实现其实有两个队列，分别是缓存队列和空闲队列
+  
+  - **缓存队列（cache queue）**：保存所有建立并可能重用的长连接。当一个连接不再被当前请求使用时，它会被放回缓存队列以便后续请求可以快速重用。
+  
+  - **空闲队列（free queue）**：当一个连接被放回缓存队列时，其对应的节点会被移动到空闲队列。空闲队列是一个节点池，它保存了当前没有与任何实际 TCP 连接关联的节点。这些节点可以用来保存新释放的或新建立的连接。
