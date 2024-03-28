@@ -24,6 +24,8 @@ lang: zh-CN
 
 接下来，我将基于《亿级流量：网站架构核心技术》一书，深化我的架构知识。我会结合书中内容和个人思考记录笔记。这本书是一位前领导推荐的架构入门读物，我期待它能帮助我达到新的高度。
 
+另外这是一本技术上有点陈旧的书了，比如后面示例中提到的Hystrix早就已经不再维护了，因此相关的架构示例不会跟书上一致，后续会结合一些新的示例另行叙述。
+
 ## 原则
 
 ### 墨菲定律、康威定律和二八定律
@@ -841,3 +843,50 @@ if ($flag = "1") {
 - **计数器算法**：计数器算法是一种简单直观的限流算法，它通过统计一定时间窗口内的请求数量来进行限流。当请求到达时，系统会检查当前请求数是否超过了预设的阈值，如果超过则进行限流。计数器算法简单易实现，但对于突发流量的处理能力较差。
 
 - **滑动窗口算法**：滑动窗口算法在计数器算法基础上增加了时间的动态性，将时间窗口分为多个小窗口，并根据流量变化动态调整窗口的大小和滑动的速率，以实现更精细的流量控制。
+
+#### 分布式限流
+
+##### 利用Redis+Lua实现简单的限流策略
+
+- limit.lua
+
+```lua
+-- 获取传递给 Lua 脚本的第一个键参数，这里 key 用于标识特定的限流对象
+local key = KEYS[1]
+-- 获取传递给 Lua 脚本的第一个值参数，并将其转换为数字。
+local limit = tonumber(ARGV[1])
+-- 尝试从 Redis 中获取当前的计数值，如果不存在，则默认为 "0"。
+local current = tonumber(redis.call('get', key) or "0")
+-- 如果当前计数加 1 超过了设定的限制 (limit)，则返回 0，表示请求被限流
+if current + 1 > limit then
+    return 0
+else 
+    -- 如果没有超过限制，使用 INCRBY 命令将 key 对应的计数值加 1
+    redis.call("INCRBY", key, "1")
+    --[[ 
+    为这个 key 设置一个过期时间，这里是 2 秒。
+    这意味着每个计数值的有效期为 2 秒，在这个时间窗口内，
+    如果请求次数超过 limit，则会被限流 
+    --]]
+    redis.call("expire", key, "2")
+    return 1
+end
+```
+
+- java
+
+```java
+public static boolean acquire() throws Exception {
+    string luaScript = Files.toString(new File("limit.lua", Charset.defaultCharset());
+    // 创建一个 Jedis 实例，用于连接到 Redis 服务器。
+    Jedis jedis = new Jedis("ipPath", port);
+    // 生成一个基于当前时间的 key，用于标识每次请求。
+    String key = "ip:" + System.currentTimeMillis();
+    String limit = "3";
+    return (Long)jedis.eval(
+                luaScript,
+                Lists.newArrayList(key),
+                Lists.newArrayList(limit)
+            ) == 1;
+}
+```
