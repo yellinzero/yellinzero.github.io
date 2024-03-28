@@ -848,7 +848,7 @@ if ($flag = "1") {
 
 ##### 利用Redis+Lua实现简单的限流策略
 
-- limit.lua
+- **Lua脚本（limit.lua）**
 
 ```lua
 -- 获取传递给 Lua 脚本的第一个键参数，这里 key 用于标识特定的限流对象
@@ -873,7 +873,7 @@ else
 end
 ```
 
-- java
+- **Java调用示例**
 
 ```java
 public static boolean acquire() throws Exception {
@@ -890,3 +890,4 @@ public static boolean acquire() throws Exception {
             ) == 1;
 }
 ```
+此方法使用Redis进行计数，并利用Lua脚本的原子性操作确保限流逻辑的准确性。通过为每个限流键设置过期时间，可以自动重置计数，从而实现在指定时间窗口内的请求控制。此示例中，将请求限制在每2秒内最多3次请求，为系统提供了一种简单而有效的流量控制机制。
