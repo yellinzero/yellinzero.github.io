@@ -890,4 +890,90 @@ public static boolean acquire() throws Exception {
             ) == 1;
 }
 ```
+
 此方法使用Redis进行计数，并利用Lua脚本的原子性操作确保限流逻辑的准确性。通过为每个限流键设置过期时间，可以自动重置计数，从而实现在指定时间窗口内的请求控制。此示例中，将请求限制在每2秒内最多3次请求，为系统提供了一种简单而有效的流量控制机制。
+
+##### 利用Nginx+Lua实现简单的限流策略
+
+- **Lua脚本（limit.lua）**
+
+```lua
+-- 加载 OpenResty 的 resty.lock 库，用于在限流过程中同步不同请求之间的访问。
+local locks = require "resty.lock"
+local function acquire()
+    -- 创建一个新的锁对象，使用 locks 字典存储锁的状态。
+    local lock =locks:new("locks")
+    local elapsed, err = lock:lock("limit_key")
+    -- 获取 Nginx 配置中声明的共享内存字典 limit_counter，用于跟踪 IP 地址对应的请求计数。
+    local limit_counter = ngx.shared.limit_counter
+    -- 使用当前时间秒作为键，每个键代表一秒钟内的请求计数。    
+    local key = "ip:" .. os.time()
+    local limit = 5
+    local current = limit_counter:get(key)
+    
+    if current ~= nil and current + 1 > limit then
+        lock:unlock()
+        return 0
+    end
+    if current == nil then
+        limit_counter:set(key, 1, 1)
+    else 
+        limit_counter:incr(key, 1)
+    end
+    lock:unlock()
+    return 1
+end
+```
+
+- **Nginx配置**
+
+```nginx
+http {
+    ……
+    # locks：分配了 10m 的空间给 resty.lock 使用，用于存储锁的状态信息。
+    lua_shared_dict locks 10m;
+    # limit_count：同样分配了 10m 的空间，用于存储每个 IP 每秒请求的计数。
+    lua_shared_dict limit_count 10m;
+}
+```
+
+#### 接入层限流
+
+对于基于Nginx接入层进行限流，通常使用Nginx自带的两个模块：`ngx_http_limit_conn_module`和`ngx_http_limit_req_module`。对于更复杂的场景还可以使用OpenResty的`lua_resty_limit_traffic`
+
+`ngx_http_limit_conn_module`是对某个key对应的总的网络连接数进行限流；`ngx_http_limit_req_module`是对某个key对应的请求的平均速率进行限流，一般有两种用法平滑模式(delay)和允许突发模式(nodelay)。
+
+##### ngx_http_limit_conn_module
+
+```nginx
+http {
+    # $binary_remote_addr 表示客户端 IP 的二进制格式，$server_name 表示服务器名
+    limit_conn_zone $binary_remote_addr/$server_name zone=addr:10m;
+    limit_conn_log_level error;
+    limit_conn_status 503;
+    # ...
+    server {
+        # ...
+        location /limit {
+            limit_conn addr 1;    
+        }
+    }
+}
+```
+
+##### ngx_http_limit_req_module
+
+```nginx
+http {
+    limit_req_zone $binary_remote_addr zone=one:10m rate=1r/s;
+    limit_conn_log_level error;
+    limit_conn_status 503;
+    # ...
+    server {
+        # ...
+        location /limit {
+            limit_req zone=one brust=5 nodelay;    
+        }
+    }
+}
+```
