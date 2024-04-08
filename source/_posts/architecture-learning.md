@@ -1044,4 +1044,76 @@ http {
   
   - **`header_timeout`**（可选）: 设置响应头中`Keep-Alive`超时值，作为客户端保持连接打开的提示。此值为客户端提供服务器希望保持连接的时长的信息，而不直接影响服务器的连接处理策略。
 
+###### DNS解析超时设置
+
+在Nginx配置中，`resolver_timeout`指令用于设置DNS解析的超时时间，默认值为30秒。这个设置是在Nginx需要解析域名时尤其重要，比如在代理请求或配置上游服务器时使用域名而非直接的IP地址。为了进行有效的DNS域名解析，`resolver_timeout`需与`resolver`指令配合使用。
+
+- **resolver**: 指定DNS服务器的地址，Nginx会使用这些服务器进行域名解析。该指令还可以接受一个`valid=time`参数，用于指定解析结果的有效期。
+
+- **resolver_timeout**: 控制DNS解析操作的超时时间。如果在设定的时间内DNS解析未完成，Nginx将停止解析过程并返回错误。适当配置此值可以防止因DNS解析延迟导致的请求处理延迟。
+
+```nginx
+http {
+    # 指定DNS服务器地址和域名解析结果的有效期
+    resolver 192.0.2.1 valid=300s;
+    
+    # 设置DNS解析超时时间为30秒
+    resolver_timeout 30s;
+    ...
+}
+```
+
+###### 代理超时设置
+
+主要有三组配置：网络连接/读/写超时设置、失败重试机制设置、upstream存活超时设置。
+
+- 网络连接、读取、发送超时设置
+  
+  - **proxy_connect_timeout**: 定义与上游服务器建立连接的超时时间，默认60秒。适当调整此值可以防止因连接延迟导致的请求阻塞。
+  
+  - **proxy_read_timeout**: 指定从上游服务器读取响应数据的超时时间，默认60秒。此参数确保Nginx能够及时放弃长时间未响应的连接。
+  
+  - **proxy_send_timeout**: 设置向上游服务器发送请求的超时时间，默认60秒。调整此值有助于处理上游服务器接收能力较弱的情况。
+
+- 失败重试机制
+  
+  - **proxy_next_upstream [error | timeout | invalid_header | http_xxx | non_idempotent | off]:** 配置在什么情况下需要进行重试，`http_xxx`允许重试特定的HTTP状态码返回的请求，`off`表示禁用重试
+  
+  - **proxy_next_upstream_tries**: 控制Nginx重试上游服务器的最大次数，0表示不限制。
+  
+  - **proxy_next_upstream_timeout**: 设置在给定时间内（如30秒），Nginx尝试所有可用上游服务器的总时长，0表示不限制时间。
+
+- upstream存活设置
+  
+  - **max_fails**: 指定在`fail_timeout`时间段内允许请求失败的最大次数，超过该次数后，上游服务器将被认为是不可用的。
+  
+  - **fail_timeout**: 定义在此时间段内`max_fails`次失败后，服务器被标记为不可用的时间。**
+
+- ngx_lua超时设置
+
+示例如下
+
+```nginx
+upstream backend_server {
+    server 192.x.x.x:xxxx max_fails=2 fail_timeout=10s weight=1;
+    server 192.x.x.x:xxxx max_fails=2 fail_timeout=10s weight=1;
+}
+
+server {
+    ...
+    location / {
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 5s;
+        proxy_send_timeout 5s;
+
+        proxy_next_upstream error timeout http_500;
+        proxy_next_upstream_timeout 0;
+        proxy_next_upstream_tries 0;
+
+        proxy_pass http://backend_server;
+        add_header upstream_addr $upstream_addr;
+    }
+}
+```
+
      
